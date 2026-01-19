@@ -1,4 +1,4 @@
-name: dsai3202-lab1
+name: titanic-prod
 channels:
   - defaults
 dependencies:
