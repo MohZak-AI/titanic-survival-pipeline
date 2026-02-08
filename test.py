@@ -8,7 +8,9 @@ from sklearn.metrics import (
 from datetime import datetime
 
 
+# this function tests the model to see how good it is
 def predict_test(data_dir: str = "data", models_dir: str = "models", outputs_dir: str = "outputs") -> None:
+    # get the saved model and the data we want to test on
     model_path = os.path.join(models_dir, "titanic_pipeline.joblib")
     test_csv = os.path.join(data_dir, "test.csv")
     targets_csv = os.path.join(data_dir, "gender_submission.csv")
@@ -17,33 +19,34 @@ def predict_test(data_dir: str = "data", models_dir: str = "models", outputs_dir
     pipe = joblib.load(model_path)
     print("[TEST] Pipeline loaded.")
 
-    # Load test data
+    # load the data and drop things that are not needed
     df = pd.read_csv(test_csv)
     passenger_ids = df["PassengerId"].copy()
     X_test = df.drop(columns=["PassengerId", "Name", "Ticket", "Cabin"])
 
-    # Load actual targets
+    # load the real answers to compare with our model
     print(f"[TEST] Loading actual targets: {targets_csv}")
     targets_df = pd.read_csv(targets_csv)
     y_true = targets_df["Survived"].values
 
+    # use the model to make guesses
     print("[TEST] Predicting...")
     preds = pipe.predict(X_test)
 
-    # Create output DataFrame with predictions and actual targets
+    # put the student id, the lucky guess, and the real answer together
     out = pd.DataFrame({
         "PassengerId": passenger_ids,
         "Survived": preds,
         "Actual": y_true
     })
 
-    # Calculate performance metrics
+    # check how many guesses were right
     accuracy = accuracy_score(y_true, preds)
     precision = precision_score(y_true, preds)
     recall = recall_score(y_true, preds)
     f1 = f1_score(y_true, preds)
 
-    # Print performance metrics
+    # show the score on the screen
     print("\n" + "="*50)
     print("TEST PERFORMANCE METRICS")
     print("="*50)
@@ -57,13 +60,13 @@ def predict_test(data_dir: str = "data", models_dir: str = "models", outputs_dir
     print(confusion_matrix(y_true, preds))
     print("="*50)
 
-    # Save predictions
+    # save the guesses to a file
     os.makedirs(outputs_dir, exist_ok=True)
     out_path = os.path.join(outputs_dir, "predictions.csv")
     out.to_csv(out_path, index=False)
     print(f"[TEST] Wrote predictions to {out_path}")
 
-    # Save performance metrics to text file
+    # write a simple report to a text file
     metrics_path = os.path.join(outputs_dir, "test_performance.txt")
     with open(metrics_path, 'w') as f:
         f.write("TITANIC ML MODEL - TEST PERFORMANCE METRICS\n")
