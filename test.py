@@ -1,89 +1,28 @@
-import os
-import pandas as pd
+"""Generate competition predictions using the saved training pipeline."""
+
+from pathlib import Path
+
 import joblib
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    classification_report, confusion_matrix
-)
-from datetime import datetime
+import pandas as pd
 
 
-# this function tests the model to see how good it is
 def predict_test(data_dir: str = "data", models_dir: str = "models", outputs_dir: str = "outputs") -> None:
-    # get the saved model and the data we want to test on
-    model_path = os.path.join(models_dir, "titanic_pipeline.joblib")
-    test_csv = os.path.join(data_dir, "test.csv")
-    targets_csv = os.path.join(data_dir, "gender_submission.csv")
-
-    print(f"[TEST] Loading pipeline: {model_path}")
-    pipe = joblib.load(model_path)
-    print("[TEST] Pipeline loaded.")
-
-    # load the data and drop things that are not needed
-    df = pd.read_csv(test_csv)
-    passenger_ids = df["PassengerId"].copy()
-    X_test = df.drop(columns=["PassengerId", "Name", "Ticket", "Cabin"])
-
-    # load the real answers to compare with our model
-    print(f"[TEST] Loading actual targets: {targets_csv}")
-    targets_df = pd.read_csv(targets_csv)
-    y_true = targets_df["Survived"].values
-
-    # use the model to make guesses
-    print("[TEST] Predicting...")
-    preds = pipe.predict(X_test)
-
-    # put the student id, the lucky guess, and the real answer together
-    out = pd.DataFrame({
-        "PassengerId": passenger_ids,
-        "Survived": preds,
-        "Actual": y_true
+    model_path = Path(models_dir) / "titanic_pipeline.joblib"
+    if not model_path.exists():
+        raise FileNotFoundError("No trained pipeline found. Run python train.py first.")
+    pipeline = joblib.load(model_path)
+    passengers = pd.read_csv(Path(data_dir) / "test.csv")
+    predictions = pipeline.predict(passengers)
+    output = Path(outputs_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    result = pd.DataFrame({
+        "PassengerId": passengers["PassengerId"],
+        "Survived": predictions,
     })
+    result.to_csv(output / "predictions.csv", index=False)
+    print(f"Wrote {len(result)} predictions to {output / 'predictions.csv'}")
+    print("Test labels are not supplied; see models/validation_metrics.json for held-out evaluation.")
 
-    # check how many guesses were right
-    accuracy = accuracy_score(y_true, preds)
-    precision = precision_score(y_true, preds)
-    recall = recall_score(y_true, preds)
-    f1 = f1_score(y_true, preds)
 
-    # show the score on the screen
-    print("\n" + "="*50)
-    print("TEST PERFORMANCE METRICS")
-    print("="*50)
-    print(f"Accuracy:  {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall:    {recall:.4f}")
-    print(f"F1-Score:  {f1:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_true, preds))
-    print("\nConfusion Matrix:")
-    print(confusion_matrix(y_true, preds))
-    print("="*50)
-
-    # save the guesses to a file
-    os.makedirs(outputs_dir, exist_ok=True)
-    out_path = os.path.join(outputs_dir, "predictions.csv")
-    out.to_csv(out_path, index=False)
-    print(f"[TEST] Wrote predictions to {out_path}")
-
-    # write a simple report to a text file
-    metrics_path = os.path.join(outputs_dir, "test_performance.txt")
-    with open(metrics_path, 'w') as f:
-        f.write("TITANIC ML MODEL - TEST PERFORMANCE METRICS\n")
-        f.write("="*50 + "\n")
-        f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        f.write(f"Accuracy:  {accuracy:.4f}\n")
-        f.write(f"Precision: {precision:.4f}\n")
-        f.write(f"Recall:    {recall:.4f}\n")
-        f.write(f"F1-Score:  {f1:.4f}\n\n")
-        f.write("Classification Report:\n")
-        f.write(classification_report(y_true, preds))
-        f.write("\nConfusion Matrix:\n")
-        f.write(str(confusion_matrix(y_true, preds)))
-        f.write("\n\nDetailed Metrics:\n")
-        f.write(f"True Positives:  {confusion_matrix(y_true, preds)[1, 1]}\n")
-        f.write(f"True Negatives:  {confusion_matrix(y_true, preds)[0, 0]}\n")
-        f.write(f"False Positives: {confusion_matrix(y_true, preds)[0, 1]}\n")
-        f.write(f"False Negatives: {confusion_matrix(y_true, preds)[1, 0]}\n")
-
-    print(f"[TEST] Saved performance metrics to {metrics_path}")
+if __name__ == "__main__":
+    predict_test()

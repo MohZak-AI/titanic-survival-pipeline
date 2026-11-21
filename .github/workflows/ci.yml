@@ -1,0 +1,29 @@
+name: Train and predict
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python train.py
+      - run: python test.py
+      - name: Validate prediction artifact
+        run: |
+          python - <<'PYTHON'
+          import pandas as pd
+          source = pd.read_csv('data/test.csv')
+          result = pd.read_csv('outputs/predictions.csv')
+          assert result.columns.tolist() == ['PassengerId', 'Survived']
+          assert result['PassengerId'].equals(source['PassengerId'])
+          assert result['Survived'].isin([0, 1]).all()
+          PYTHON

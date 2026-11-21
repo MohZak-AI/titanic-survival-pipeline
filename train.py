@@ -1,53 +1,57 @@
-import os
+"""Train and validate a Titanic survival classifier."""
+
+import json
+from pathlib import Path
+
+import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
-import joblib
 
-# bring in the helper tool for cleaning data
-from src.data.preprocessing import build_preprocessor
+from preprocessing import build_preprocessor
+
 
 def train_model(data_dir: str = "data", models_dir: str = "models") -> None:
-    # find where the training file is
-    train_csv = os.path.join(data_dir, "train.csv")
-    print(f"[TRAIN] Loading {train_csv} ...")
-    
-    # read the data and keep the answer column separate
-    df = pd.read_csv(train_csv)
-    y = df["Survived"].copy()
-    
-    # remove columns that don't help with the math
-    X = df.drop(columns=["Survived", "PassengerId", "Name", "Ticket", "Cabin"])
-
-    # pick which columns are numbers and which are words
-    numeric_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
-    categorical_features = ["Sex", "Embarked"]
-    
-    # set up the data cleaner and the model
-    pre = build_preprocessor(numeric_features, categorical_features)
-    model = RandomForestClassifier(random_state=42)
-    
-    # put everything into one single package
-    pipe = Pipeline([("preprocess", pre), ("model", model)])
-
-    # try different settings to see which works best
-    param_grid = {
-        "model__n_estimators": [50, 100],
-        "model__max_depth": [None, 5, 10],
-        "model__min_samples_split": [2, 5],
+    df = pd.read_csv(Path(data_dir) / "train.csv")
+    numeric = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+    categorical = ["Sex", "Embarked"]
+    X = df[numeric + categorical]
+    y = df["Survived"]
+    X_train, X_valid, y_train, y_valid = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    pipeline = Pipeline([
+        ("preprocess", build_preprocessor(numeric, categorical)),
+        ("model", RandomForestClassifier(random_state=42)),
+    ])
+    search = GridSearchCV(
+        pipeline,
+        {"model__n_estimators": [50, 100],
+         "model__max_depth": [None, 5, 10],
+         "model__min_samples_split": [2, 5]},
+        cv=5, scoring="accuracy", n_jobs=-1,
+    )
+    search.fit(X_train, y_train)
+    predictions = search.predict(X_valid)
+    metrics = {
+        "validation_rows": len(y_valid),
+        "random_state": 42,
+        "best_cv_accuracy": search.best_score_,
+        "best_parameters": search.best_params_,
+        "accuracy": accuracy_score(y_valid, predictions),
+        "precision": precision_score(y_valid, predictions, zero_division=0),
+        "recall": recall_score(y_valid, predictions, zero_division=0),
+        "f1": f1_score(y_valid, predictions, zero_division=0),
     }
+    output = Path(models_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    joblib.dump(search.best_estimator_, output / "titanic_pipeline.joblib")
+    (output / "validation_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    print(json.dumps(metrics, indent=2))
+    print(f"Saved model and validation metrics in {output}")
 
-    # run the test to find the best settings
-    grid = GridSearchCV(pipe, param_grid, cv=5, scoring="accuracy", n_jobs=-1, verbose=2)
-    grid.fit(X, y)
-    
-    # show the results
-    print(f"[TRAIN] Best params: {grid.best_params_}")
-    print(f"[TRAIN] Best CV accuracy: {grid.best_score_:.4f}")
 
-    # make a folder for the model and save it
-    os.makedirs(models_dir, exist_ok=True)
-    out_path = os.path.join(models_dir, "titanic_pipeline.joblib")
-    joblib.dump(grid.best_estimator_, out_path)
-    print(f"[TRAIN] Saved pipeline to {out_path}")
+if __name__ == "__main__":
+    train_model()
